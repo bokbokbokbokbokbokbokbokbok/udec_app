@@ -11,7 +11,7 @@ st.set_page_config(page_title="캐드(DXF) 맞춤형 좌표 추출기", layout="
 st.title("📐 캐드(DXF) 맞춤형 좌표 추출 및 미리보기")
 st.markdown("""
 캐드 도면(DXF)을 업로드하면 도면을 미리보기로 확인하며 레이어를 선택할 수 있습니다.
-선택한 레이어는 **노란색**으로 강조되며, 해당 좌표만 엑셀로 추출됩니다.
+선택한 레이어는 **노란색 선**과 **청록색 점 번호**로 강조되며, 해당 좌표만 엑셀로 추출됩니다.
 """)
 
 # 파일 업로드
@@ -52,7 +52,7 @@ if uploaded_file is not None:
             
             st.divider()
             
-            # 화면을 반으로 나누기 (왼쪽: 선택 및 표 / 오른쪽: 도면 미리보기)
+            # 화면을 반으로 나누기
             col1, col2 = st.columns([1, 1])
             
             with col1:
@@ -89,50 +89,60 @@ if uploaded_file is not None:
 
             # --- 도면 그리기 (오른쪽 화면) ---
             with col2:
-                st.subheader("👀 도면 미리보기")
+                st.subheader("👀 도면 미리보기 (번호 표시)")
                 
-                # 그래프 설정 (캐드처럼 검은 배경)
                 fig, ax = plt.subplots(figsize=(8, 8))
                 fig.patch.set_facecolor('#1E1E1E') 
                 ax.set_facecolor('#1E1E1E')
                 
-                # 도면 객체를 하나씩 그리며 색상 입히기
                 for entity in msp:
                     if entity.dxftype() not in ['POINT', 'LINE', 'LWPOLYLINE']:
                         continue
                     
                     layer_name = entity.dxf.layer
-                    # 선택된 레이어인지 확인
                     is_selected = (selected_layers is not None) and (layer_name in selected_layers)
                     
-                    # 선택 여부에 따른 색상, 굵기, 투명도 세팅
                     color = 'yellow' if is_selected else 'white'
                     linewidth = 2.0 if is_selected else 0.5
-                    alpha = 1.0 if is_selected else 0.2  # 미선택은 옅게
-                    zorder = 10 if is_selected else 1    # 선택된 것을 위로
+                    alpha = 1.0 if is_selected else 0.2  
+                    zorder = 10 if is_selected else 1    
                     
                     if entity.dxftype() == 'LINE':
                         x = [entity.dxf.start.x, entity.dxf.end.x]
                         y = [entity.dxf.start.y, entity.dxf.end.y]
                         ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=zorder)
                         
+                        # 💡 선택된 객체에 번호 표시 (선: 1, 2)
+                        if is_selected:
+                            ax.text(x[0], y[0], '1', color='cyan', fontsize=10, fontweight='bold', zorder=15)
+                            ax.text(x[1], y[1], '2', color='cyan', fontsize=10, fontweight='bold', zorder=15)
+                            
                     elif entity.dxftype() == 'LWPOLYLINE':
                         points = entity.get_points()
                         x = [p[0] for p in points]
                         y = [p[1] for p in points]
-                        if entity.closed: # 폐합된 폴리선이면 끝점을 시작점과 연결
+                        if entity.closed: 
                             x.append(x[0])
                             y.append(y[0])
                         ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=zorder)
                         
+                        # 💡 선택된 객체에 번호 표시 (폴리선: 1, 2, 3, 4...)
+                        if is_selected:
+                            for i, p in enumerate(points):
+                                ax.text(p[0], p[1], str(i+1), color='cyan', fontsize=10, fontweight='bold', zorder=15)
+                                
                     elif entity.dxftype() == 'POINT':
-                        ax.scatter(entity.dxf.location.x, entity.dxf.location.y, color=color, s=15, alpha=alpha, zorder=zorder)
+                        px = entity.dxf.location.x
+                        py = entity.dxf.location.y
+                        ax.scatter(px, py, color=color, s=15, alpha=alpha, zorder=zorder)
+                        
+                        # 💡 선택된 객체에 번호 표시 (점: P)
+                        if is_selected:
+                            ax.text(px, py, 'P', color='cyan', fontsize=10, fontweight='bold', zorder=15)
                 
-                # 그래프 비율을 1:1로 맞추고 테두리 숨기기
                 ax.set_aspect('equal', 'datalim')
                 ax.axis('off')
                 
-                # 스트림릿에 그래프 표시
                 st.pyplot(fig)
                 
         else:
