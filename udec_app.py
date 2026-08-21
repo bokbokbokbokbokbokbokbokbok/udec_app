@@ -11,7 +11,7 @@ st.set_page_config(page_title="캐드(DXF) 맞춤형 좌표 추출기", layout="
 st.title("📐 캐드(DXF) 맞춤형 좌표 추출 및 미리보기")
 st.markdown("""
 캐드 도면(DXF)을 업로드하면 도면을 미리보기로 확인하며 레이어를 선택할 수 있습니다.
-선택한 레이어는 **노란색 선**과 **청록색 점 번호**로 강조되며, 해당 좌표만 엑셀로 추출됩니다.
+선택한 레이어는 **노란색 선**과 **표와 일치하는 청록색 고유 번호**로 표시됩니다.
 """)
 
 # 파일 업로드
@@ -30,20 +30,22 @@ if uploaded_file is not None:
         available_layers = set()
         all_data = []
         
-        # 1. 데이터 수집
+        # 1. 데이터 수집 (그려진 순서 기록)
+        extract_order = 0
         for entity in msp:
             if entity.dxftype() in ['POINT', 'LINE', 'LWPOLYLINE']:
+                extract_order += 1  # 💡 도면에 존재하는 순서를 고유하게 기록합니다.
                 layer_name = entity.dxf.layer
                 available_layers.add(layer_name)
                 
                 if entity.dxftype() == 'POINT':
-                    all_data.append({'레이어': layer_name, '종류': '점(POINT)', 'X좌표': entity.dxf.location.x, 'Y좌표': entity.dxf.location.y})
+                    all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '점(POINT)', 'X좌표': entity.dxf.location.x, 'Y좌표': entity.dxf.location.y})
                 elif entity.dxftype() == 'LINE':
-                    all_data.append({'레이어': layer_name, '종류': '선(LINE) 시작점', 'X좌표': entity.dxf.start.x, 'Y좌표': entity.dxf.start.y})
-                    all_data.append({'레이어': layer_name, '종류': '선(LINE) 끝점', 'X좌표': entity.dxf.end.x, 'Y좌표': entity.dxf.end.y})
+                    all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '선(LINE) 시작점', 'X좌표': entity.dxf.start.x, 'Y좌표': entity.dxf.start.y})
+                    all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '선(LINE) 끝점', 'X좌표': entity.dxf.end.x, 'Y좌표': entity.dxf.end.y})
                 elif entity.dxftype() == 'LWPOLYLINE':
                     for i, point in enumerate(entity.get_points()):
-                        all_data.append({'레이어': layer_name, '종류': f'폴리선(POLYLINE) 점{i+1}', 'X좌표': point[0], 'Y좌표': point[1]})
+                        all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': f'폴리선(POLYLINE) 점{i+1}', 'X좌표': point[0], 'Y좌표': point[1]})
         
         if all_data:
             full_df = pd.DataFrame(all_data)
@@ -66,8 +68,9 @@ if uploaded_file is not None:
                 
                 st.subheader("2️⃣ 좌표 추출 결과")
                 if selected_layers:
+                    # 💡 가나다순 정렬로 꼬이는 현상을 막고 '추출순서'대로 정렬
                     filtered_df = full_df[full_df['레이어'].isin(selected_layers)]
-                    filtered_df = filtered_df.sort_values(by=['레이어', '종류']).reset_index(drop=True)
+                    filtered_df = filtered_df.sort_values(by=['레이어', '추출순서']).drop(columns=['추출순서']).reset_index(drop=True)
                     
                     st.success(f"선택하신 레이어에서 총 {len(filtered_df)}개의 좌표를 찾았습니다!")
                     st.dataframe(filtered_df, use_container_width=True, height=400)
@@ -89,12 +92,13 @@ if uploaded_file is not None:
 
             # --- 도면 그리기 (오른쪽 화면) ---
             with col2:
-                st.subheader("👀 도면 미리보기 (번호 표시)")
+                st.subheader("👀 도면 미리보기 (표 번호 연동)")
                 
                 fig, ax = plt.subplots(figsize=(8, 8))
                 fig.patch.set_facecolor('#1E1E1E') 
                 ax.set_facecolor('#1E1E1E')
                 
+                # 1. 도면 선 및 점 그리기
                 for entity in msp:
                     if entity.dxftype() not in ['POINT', 'LINE', 'LWPOLYLINE']:
                         continue
@@ -111,12 +115,6 @@ if uploaded_file is not None:
                         x = [entity.dxf.start.x, entity.dxf.end.x]
                         y = [entity.dxf.start.y, entity.dxf.end.y]
                         ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=zorder)
-                        
-                        # 💡 선택된 객체에 번호 표시 (선: 1, 2)
-                        if is_selected:
-                            ax.text(x[0], y[0], '1', color='cyan', fontsize=10, fontweight='bold', zorder=15)
-                            ax.text(x[1], y[1], '2', color='cyan', fontsize=10, fontweight='bold', zorder=15)
-                            
                     elif entity.dxftype() == 'LWPOLYLINE':
                         points = entity.get_points()
                         x = [p[0] for p in points]
@@ -125,20 +123,16 @@ if uploaded_file is not None:
                             x.append(x[0])
                             y.append(y[0])
                         ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=zorder)
-                        
-                        # 💡 선택된 객체에 번호 표시 (폴리선: 1, 2, 3, 4...)
-                        if is_selected:
-                            for i, p in enumerate(points):
-                                ax.text(p[0], p[1], str(i+1), color='cyan', fontsize=10, fontweight='bold', zorder=15)
-                                
                     elif entity.dxftype() == 'POINT':
                         px = entity.dxf.location.x
                         py = entity.dxf.location.y
                         ax.scatter(px, py, color=color, s=15, alpha=alpha, zorder=zorder)
-                        
-                        # 💡 선택된 객체에 번호 표시 (점: P)
-                        if is_selected:
-                            ax.text(px, py, 'P', color='cyan', fontsize=10, fontweight='bold', zorder=15)
+                
+                # 2. 표 인덱스와 100% 동일한 고유 번호 매기기
+                if selected_layers and not filtered_df.empty:
+                    for idx, row in filtered_df.iterrows():
+                        # idx는 표의 가장 왼쪽 인덱스(0, 1, 2...)입니다.
+                        ax.text(row['X좌표'], row['Y좌표'], str(idx), color='cyan', fontsize=12, fontweight='bold', zorder=15)
                 
                 ax.set_aspect('equal', 'datalim')
                 ax.axis('off')
