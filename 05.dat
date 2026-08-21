@@ -1,0 +1,58 @@
+re 04.sav
+
+
+;소프트숏크리트물성치
+;prop mat 물성번호 st_d 단위중량 st_p 프아송비 st_ym 탄성계수
+;prop mat 물성번호 interface 물성치
+prop mat 13 &
+	st_d	2.5E-03			&
+	st_p	0.20 			&
+	st_ym	5.00E+03			&
+	if_kn	4.46E+03			&
+	if_ks	2.23E+03			&
+	if_c	1.00 			&
+	if_fr	45 			&
+	if_t	1.00
+
+;숏크리트설치
+;xc yc 중심좌표 np 절점갯수 thi 두께 mat 물성번호
+;fang 시점각도 the 종점각도-시점각도
+
+struct gen xc 62.92 yc 33.6417 np 60 thi 0.12 mat 13 fang 0.01 theta 24
+struct gen xc 62.92 yc 33.6417 np 60 thi 0.12 mat 13 fang 156 theta 24
+
+;록볼트설치
+;시점x1,y1 종점x2,y2 조각갯수(2이상) 물성번호 단면적 그라우트물성번호 connect
+cable 68.463,34.413 72.379,33.599 6 12 0.0005067 10 con
+cable 68.637,35.923 72.636,35.825 6 12 0.0005067 10 con
+cable 57.376,34.413 53.460,33.599 6 12 0.0005067 10 con
+cable 57.202,35.923 53.203,35.825 6 12 0.0005067 10 con
+
+def setVariable
+    xCoord=62.9200
+    yCoord=36.1300
+    relax=0.70 ; 하반 54:16:50 = 0.54:0.70:1.0
+    tunnelNumber = 1
+    stageNumber = 5
+end
+
+setVariable
+
+findDomain
+
+getfor
+
+appfor
+
+step 5000
+
+save 05.sav
+
+
+
+
+
+
+
+
+

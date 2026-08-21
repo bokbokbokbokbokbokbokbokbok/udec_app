@@ -1,0 +1,95 @@
+re 01.sav
+
+;록볼트물성치
+;prop mat 물성번호 cb_de 단위중량 cb_yi 항복강도 cb_yc comp yield force cb_ym 탄성계수
+;prop mat 물성번호 cb_kb shear stiffness cb_sb shear strength
+prop mat 12 &
+		cb_de	7.85E-03					&
+		cb_ym	210000 					&
+		cb_kbond	0.75E+04					&
+		cb_sbond	0.4 					&
+		cb_yield	490
+
+;소프트숏크리트물성치
+;prop mat 물성번호 st_d 단위중량 st_p 프아송비 st_ym 탄성계수
+;prop mat 물성번호 interface 물성치
+prop mat 13 &
+	st_d	2.5E-03			&
+	st_p	0.20 			&
+	st_ym	5.00E+03			&
+	if_kn	4.46E+03			&
+	if_ks	2.23E+03			&
+	if_c	1.00 			&
+	if_fr	45 			&
+	if_t	1.00
+; 출처(숏크리트 라이닝의 거동해석에 영향을 미치는 입력변수들에 대한 민감도분석(배두진, 이두화, 장수호, 김영근)
+
+; interface의 파괴 유무 확인 명령어는 pl bound stru ifail 임
+
+;숏크리트설치
+;xc yc 중심좌표 np 절점갯수 thi 두께 mat 물성번호
+;fang 시점각도 the 종점각도-시점각도
+struct gen xc 62.9200 yc 36.1300 np 80 thi 0.12 mat 13 fang 0.01 theta 180 ;
+
+; Pl bl stru thick red 명령으로 Shotcrete 생성 확인
+; Pl stru num 명령으로 확인
+
+;록볼트설치
+;시점x1,y1 종점x2,y2 조각갯수(2이상) 물성번호 단면적 그라우트물성번호 connect
+
+; 1
+cable 57.352,37.442 53.459,38.360 6 12 0.0005067 10 con
+
+; 2
+cable 57.898,38.869 54.387,40.784 6 12 0.0005067 10 con
+
+; 3
+cable 58.802,40.100 55.923,42.877 6 12 0.0005067 10 con
+
+; 4
+cable 60.000,41.048 57.958,44.488 6 12 0.0005067 10 con
+
+; 5
+cable 61.406,41.646 60.347,45.503 6 12 0.0005067 10 con
+
+; 6
+cable 62.920,41.850 62.920,45.850 6 12 0.0005067 10 con
+
+; 7
+cable 64.433,41.646 65.492,45.503 6 12 0.0005067 10 con
+
+; 8
+cable 65.839,41.048 67.881,44.488 6 12 0.0005067 10 con
+
+; 9
+cable 67.037,40.100 69.916,42.877 6 12 0.0005067 10 con
+
+; 10
+cable 67.941,38.869 71.453,40.784 6 12 0.0005067 10 con
+
+; 11
+cable 68.487,37.442 72.380,38.360 6 12 0.0005067 10 con
+
+
+
+; Pl bl bou stru ca 명령으로 R/B 생성 확인
+
+def setVariable
+    xCoord=62.9200
+    yCoord=36.1300
+    relax=0.70 ; 상반 54:16:50 = 0.54:0.70:1.0
+    tunnelNumber = 1
+    stageNumber = 2
+end
+
+setVariable
+
+findDomain
+
+getfor
+
+appfor
+
+step 5000
+
+save 02.sav

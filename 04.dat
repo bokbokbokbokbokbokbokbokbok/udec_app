@@ -1,0 +1,33 @@
+re 03.sav
+
+;굴착
+;del ann 중심점x,중심점y 내경r1, 외경r2 xr xmax,xmin yr ymin,ymax
+;del reg x1,y1 x2,y2 x3,y3...
+;del ann 0.0,0.0 0,5.2 yr -2.5,0.635
+del range atblock 63.0063 34.2344
+del range atblock 60.4928 34.5028
+del range atblock 63.1177 34.0549
+del range atblock 63.8280 35.5017
+del range atblock 65.3691 35.0864
+del range atblock 67.1649 34.5238
+del range atblock 58.5291 35.1898
+
+def setVariable
+    xCoord=62.9200
+    yCoord=36.1300
+    relax=0.54 ; 하반 54:16:50 = 0.54:0.70:1.0
+    tunnelNumber = 1
+    stageNumber = 4
+end
+
+setVariable
+
+findDomain
+
+getfor
+
+appfor
+
+step 5000
+
+save 04.sav

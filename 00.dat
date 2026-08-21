@@ -1,0 +1,311 @@
+new
+; 단위 m, MPa
+;모서리반경지정
+;ro 모서리반경
+ro 0.035
+;_서울-세종 제10공구 참고_
+;전체해석영역지정
+; bl x1,y1 x2,y2 x3,y3....
+bl 0.0000,0.0000 0.0000,63.835 125.84,63.835 125.84,0.0000      
+
+;성토층
+table 1 0.0000,61.470 0.0000,63.835 125.84,63.835 125.84,61.470 0.0000,61.470       
+cr table 1
+
+;매립층
+table 2 0.0000,59.356 0.0000,61.470 125.84,61.470 125.84,59.356 0.0000,59.356     
+cr table 2
+
+;퇴적점토
+table 3 0.0000,58.401 0.0000,59.356 125.84,59.356 125.84,58.401 0.0000,58.401     
+cr table 3
+
+;퇴적자갈
+table 4 0.0000,57.024 0.0000,58.401 125.84,58.401 125.84,57.024 0.0000,57.024       
+cr table 4
+
+;4-2등급
+table 5 0.0000,42.590 0.0000,57.024 125.84,57.024 125.84,42.590 0.0000,42.590           
+cr table 5
+
+;4-1등급
+table 6 0.0000,32.751 0.0000,42.590 125.84,42.590 125.84,32.751 0.0000,32.751     
+cr table 6
+
+;3-2등급
+table 7 0.0000,30.750 0.0000,32.751 125.84,32.751 125.84,30.750 0.0000,30.750         
+cr table 7
+
+;3-1등급
+table 8 0.0000,22.675 0.0000,30.750 125.84,30.750 125.84,22.675 0.0000,22.675     
+cr table 8
+
+;2-2등급
+table 9 0.0000,18.533 0.0000,22.675 125.84,22.675 125.84,18.533 0.0000,18.533      
+cr table 9
+
+;2-1등급
+table 10 0.0000,18.533 0.0000,18.533 125.84,18.533 125.84,5.8893 0.0000,5.8893        
+cr table 10
+
+;1등급
+table 11 0.0000,0.0000 0.0000,5.8893 125.84,5.8893 125.84,0.0000 0.0000,0.0000     
+cr table 11
+
+;터널형상
+; arc 중심점x,중심점y 시작점x,시작점y 반시계각도 절점수
+; CR 시작점x,시작점y
+
+; 터널
+arc 60.210,36.130 68.264,33.641 17 3
+arc 62.920,36.130 68.640,36.130 180 18
+arc 65.630,36.130 57.200,36.130 17 3
+arc 62.920,121.88 57.575,33.641 7 11
+cr 57.200,36.130 58.700,36.130
+cr 58.700,36.130 59.420,35.630
+cr 59.420,35.630 66.420,35.630
+cr 66.420,35.630 67.140,36.130
+cr 67.140,36.130 68.640,36.130
+
+
+;풍화암 붕적토에는 절리가 없으므로 숨겨준다 below : 밑으로
+;Table 2 위쪽을 숨기는 명령으로 풍화암 및 풍화토, 콘크리트댐은 절리가 없으므로 사용하면 편리
+
+;※ General range(풍화토/풍화암/사면 해석시 사용시 편리)
+
+;① avobe ∼ 위에
+
+;- Hide above table 4
+
+;② below ∼ 아래에
+
+;- Hide below table n
+
+;③ inside ∼ 안쪽에
+
+;- Hide inside table 1
+
+;④ outside ∼ 바깥쪽에
+
+;- Hide outside table 3 (3번 테이블 위로니까 3번테이블은 해당되지 않음.)
+hide above table 5
+
+;절리생성
+;jset 각도,편차   연장,편차   간격,편차   수직거리, 편차   {통과기준점x,y}
+;![](https://i.imgur.com/8E2RPCU.png)
+;경사각도는 9시기준   시계방향이 (+)
+;경사각도는 3시기준 반시계방향이 (-)
+;경사각도=위경사(보정경사,)
+;단위 m로 설정함
+;편차 우선 2로 하였는데 나중에 물어볼 것.
+;![](https://i.imgur.com/fIlyuU7.png)
+
+;![](https://i.imgur.com/tdrkXQK.png)
+;<위에 excel 참고>
+;joint 생성
+jset  36.9 0  4 1  0.02 0  12 0  0 0
+jset  28.8 0  3 1  0.03 0  12 0  0 0
+jset  -68.6 0  2 1  0.04 0  12 0  0 0
+
+;절리 생성후 Hide 했던 Table을 다시 생성
+show
+
+;절리를 형성하지 못한 Joint를 삭제하라는 명령어
+;jdel
+
+*********************************************************************************************************
+;Contacts are automatically deleted when the separation is greater than
+;.55 times the rounding length(default). If off, contacts are never deleted
+*********************************************************************************************************
+;요소망생성
+gen quad 2.0
+
+gen edge 1.5
+;블럭 내 생성되는 삼각형 Zone의 변 최대길이
+;gen {범위xmax,xmin ymin,ymax} edge 요소한변최대길이
+
+Set delc on
+;변위에 의한 해석영역의 Over를 막아줌
+
+;damp auto
+;정적해석시 사용, 진동에너지를 빨리 흡수
+;해석수행 과정에서 물성치에 의해 자동계산되어 진다.
+;Damp local은 사용자가 감쇠비를 직접 입력하는 방법으로 동적해석시 사용된다.
+
+DELETE RANGE AREA 5.0e-2
+;작은 블록에서의 응력 집중을 막기 위하여 작은 블록을 삭제
+;Print max 명령으로 가장 작은 블록의 크기를 확인 후 삭제
+
+set back 0
+*********************************************************************************************************
+;Blocks smaller than roughly 1 percent of the largest blocks in the
+;area of interest can be deleted without noticeably affecting model results
+*********************************************************************************************************
+
+;구성방정식지정
+;change cons 블록 구성방정식번호 (MC-->3)
+;change jcons 절리면 구성방정식번호 (MC-->2, BB-->7)
+def derive
+s_mod = y_mod / (2.0 * (1.0 + p_ratio))
+b_mod = y_mod / (3.0 * (1.0 - 2.0 * p_ratio))
+end
+
+;mod : 탄성계수
+;p_ratio : 프아송비
+;den : 단위중량
+;coh : 점착력
+;fr : 내부마찰각
+;te : 인장력
+;⇒ 암반의 경우에 있어서는 간접인장시험(브라질리언시험), Hoek&Brown식을 통해 인장강도를 산정하지만 그 외의 경우는 인장강도의 범위가 Cohesion의 약 1/10정도를 가지므로 Cohesion값을 기준으로 약 1/10정도를 부여함
+;b b_mod : 체적탄성계수
+;sh s_mod : 전단탄성계수
+*********************************************************************************************************
+
+; MATERIAL PROERTIES, UNIT 10^6KG/M^3, MN, MPa
+
+; B-B모델사용 시 MPa 단위만 사용 : 다른 단위 사용할 경우 초기수렴시 엄청난 변위와 함께 에러 발생
+
+*********************************************************************************************************
+;1.성토층
+set y_mod=10 p_ratio=0.35
+derive
+PROP mat=1 den 0.0019 b b_mod sh s_mod coh 0.015 fr 25 te 0.0015
+change ins table 1 mat=1 cons=3
+;CONS=0 → Null model :공동, 굴착공간의 모델링
+;CONS=1 → elastic model :강철의 모델링
+;CONS=3 → mohr-coulomb model :토질 및 암반역학 (사면 안정 및 터널 안정 해석)
+
+;2.매립층
+set y_mod=20 p_ratio=0.34
+derive
+PROP mat=2 den 0.0018 b b_mod sh s_mod coh 0.005 fr 27 te 0.0005
+change ins table 2 mat=2 cons=3
+
+;3.퇴적점성토
+set y_mod=5 p_ratio=0.4
+derive
+PROP mat=3 den 0.00175 b b_mod sh s_mod coh 0.024 fr 0 te 0.0024
+change ins table 3 mat=3 cons=3
+
+;4.퇴적자갈
+set y_mod=35 p_ratio=0.33
+derive
+PROP mat=4 den 0.0019 b b_mod sh s_mod coh 0 fr 32 te 0
+change ins table 4 mat=4 cons=3
+
+;5.4-2등급
+set y_mod=1500 p_ratio=0.28
+derive
+PROP mat=5 den 0.0023 b b_mod sh s_mod coh 0.3 fr 34 te 0.03
+change ins table 5 mat=5 cons=3
+
+;6.4-1등급
+set y_mod=2100 p_ratio=0.27
+derive
+PROP mat=6 den 0.00235 b b_mod sh s_mod coh 0.5 fr 35 te 0.05
+change ins table 6 mat=6 cons=3
+
+;7.3-2등급
+set y_mod=4800 p_ratio=0.25
+derive
+PROP mat=7 den 0.0024 b b_mod sh s_mod coh 0.8 fr 37 te 0.08
+change ins table 7 mat=7 cons=3
+
+;8.3-1등급
+set y_mod=6300 p_ratio=0.24
+derive
+PROP mat=8 den 0.00245 b b_mod sh s_mod coh 1.2 fr 39 te 0.12
+change ins table 8 mat=8 cons=3
+
+;9.2-2등급
+set y_mod=11000 p_ratio=0.23
+derive
+PROP mat=9 den 0.0025 b b_mod sh s_mod coh 1.9 fr 41 te 0.19
+change ins table 9 mat=9 cons=3
+
+;10.2-11등급
+set y_mod=14000 p_ratio=0.22
+derive
+PROP mat=10 den 0.0026 b b_mod sh s_mod coh 3.1 fr 43 te 0.31
+change ins table 10 mat=10 cons=3
+
+;11.1등급
+set y_mod=23000 p_ratio=0.21
+derive
+PROP mat=11 den 0.0027 b b_mod sh s_mod coh 3.8 fr 45 te 0.38
+change ins table 11 mat=11 cons=3
+
+
+
+;절리면물성치
+
+;MC-Slip모델의 경우
+;prop jmat=번호 {range xmax,xmin ymin,ymax}{reg x1,y1 x2,y2 x3,y3....}
+;jkn=수직강성 jks=전단강성 jfric=내부마찰각 jcoh=점착력 jten=인장력
+
+;BB모델의 경우
+;prop jmat=번호 {range xmax,xmin ymin,ymax}{reg x1,y1 x2,y2 x3,y3....}
+;jkn=수직강성 jks=전단강성 jrc JRC jcs JCS sigmac 일축강도
+;phir 잔류마찰각 lo 코아직경 BBDP
+
+
+; 중요!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+; 암반의 물성치보다 절리면의 물성치갯수가 같거나 많아야 한다.
+
+*********************************************************************************************************
+
+;fictitious Joint 및 joint 물성 부여
+
+*********************************************************************************************************
+;Jcondf=2 → Coulomb slip model
+;Jcondf=7 → Barton-Bandis joint model로서 불연속면의 거칠기(JRC), 압축강도(JCS), 수직 및 전단강성을 이용
+;→ 2~4등급 암반의 불연속체 해석시 사용
+;fictitious Joint 
+*************************************************************************
+;첫번째는 전체절리의 물성치라는데 전체절리가 무엇인지 모르겠음, 기존것 사용.
+CHANGE JMAT=1 JCON=7
+prop jmat=1 jkn=7e5 jks=7e5 jrc=50 jcs=200.0 phi=60 &
+si=400 ln=1 lo=0.1
+;![[Pasted image 20260529192549.png]]
+
+;Joint 물성치
+change jmat=2 jcon=7 range angle -35.9 -37.9
+prop jmat=2 jkn=8400 jks=700 jrc=7 jcs=38 phi=31 &
+si=100 ln=1 lo=0.1
+
+change jmat=3 jcon=7 range angle -27.8 -29.8
+prop jmat=3 jkn=8400 jks=700 jrc=7 jcs=38 phi=31 &
+si=100 ln=1 lo=0.1
+
+change jmat=4 jcon=7 range angle 69.6 67.6
+prop jmat=4 jkn=8400 jks=700 jrc=7 jcs=38 phi=31 &
+si=100 ln=1 lo=0.1
+
+set jcondf=7
+
+;중력가속도지정
+set gravity 0.0 -9.81
+
+;damp local
+
+;경계조건
+;bound xmin,xmax ymin,ymax xvel=0.0 또는 yvel=0.0
+
+bound xvel=0 range -0.5 0.5 -0.5 64.335 
+bound yvel=0 range -0.5 126.34 -0.5 0.5 
+bound xvel=0 range 125.34 126.34 -0.5 64.335 
+
+hist unbal
+;Flac과 마찬가지로 Unbalanced Force로 초기응력을 구현 → 불균형력은 정해석에서 역학적 평형 상태에 도달 했을 때를 가르킨다.
+;힘 벡터가 0이면 평형상태에 왔다고 보지만 정확이 0이 될 수는 없음
+;불평형력이 수렴되지 않는다는 것은 절리 미끄러짐이나 블록파괴/소성영역이 발생했다는 증거가 된다.
+
+step 3000
+
+;초기응력설정
+
+ca k0_set.fis
+set k0=1.0
+k0_set
+
+save 00.sav

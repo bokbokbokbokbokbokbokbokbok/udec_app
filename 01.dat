@@ -1,0 +1,133 @@
+re 00.sav
+
+cal loaddist.fis
+
+;변위초기화
+Reset HIS
+Reset VEL
+Reset DISP
+Reset JDIS
+Reset ROT
+
+;초기 응력상태에서 발생된 블록 회전, 가속도, 변위, 기록 등을 초기화 시킴
+;수렴과정에서 생긴 변형이 해석에 영향을 주지 않도록 하기 위하여 실시
+
+;1.성토층
+set y_mod=10 p_ratio=0.35
+derive
+PROP mat=1 den 0.0019 b b_mod sh s_mod coh 0.015 fr 25 te 0.0015
+;change ins table 1 mat=1 cons=3
+;CONS=0 → Null model :공동, 굴착공간의 모델링
+;CONS=1 → elastic model :강철의 모델링
+;CONS=3 → mohr-coulomb model :토질 및 암반역학 (사면 안정 및 터널 안정 해석)
+
+;2.매립층
+set y_mod=20 p_ratio=0.34
+derive
+PROP mat=2 den 0.0018 b b_mod sh s_mod coh 0.005 fr 27 te 0.0005
+;change ins table 2 mat=2 cons=3
+
+;3.퇴적점성토
+set y_mod=5 p_ratio=0.4
+derive
+PROP mat=3 den 0.00175 b b_mod sh s_mod coh 0.024 fr 0 te 0.0024
+;change ins table 3 mat=3 cons=3
+
+;4.퇴적자갈
+set y_mod=35 p_ratio=0.33
+derive
+PROP mat=4 den 0.0019 b b_mod sh s_mod coh 0 fr 32 te 0
+;change ins table 4 mat=4 cons=3
+
+;5.4-2등급
+set y_mod=1500 p_ratio=0.28
+derive
+PROP mat=5 den 0.0023 b b_mod sh s_mod coh 0.3 fr 34 te 0.03
+;change ins table 5 mat=5 cons=3
+
+;6.4-1등급
+set y_mod=2100 p_ratio=0.27
+derive
+PROP mat=6 den 0.00235 b b_mod sh s_mod coh 0.5 fr 35 te 0.05
+;change ins table 6 mat=6 cons=3
+
+;7.3-2등급
+set y_mod=4800 p_ratio=0.25
+derive
+PROP mat=7 den 0.0024 b b_mod sh s_mod coh 0.8 fr 37 te 0.08
+;change ins table 7 mat=7 cons=3
+
+;8.3-1등급
+set y_mod=6300 p_ratio=0.24
+derive
+PROP mat=8 den 0.00245 b b_mod sh s_mod coh 1.2 fr 39 te 0.12
+;change ins table 8 mat=8 cons=3
+
+;9.2-2등급
+set y_mod=11000 p_ratio=0.23
+derive
+PROP mat=9 den 0.0025 b b_mod sh s_mod coh 1.9 fr 41 te 0.19
+;change ins table 9 mat=9 cons=3
+
+;10.2-11등급
+set y_mod=14000 p_ratio=0.22
+derive
+PROP mat=10 den 0.0026 b b_mod sh s_mod coh 3.1 fr 43 te 0.31
+;change ins table 10 mat=10 cons=3
+
+;11.1등급
+set y_mod=23000 p_ratio=0.21
+derive
+PROP mat=11 den 0.0027 b b_mod sh s_mod coh 3.8 fr 45 te 0.38
+;change ins table 11 mat=11 cons=3
+
+;--------------------------------------------------------------;
+
+; 상단면 굴착
+
+;--------------------------------------------------------------;
+
+;<<step 1>>
+
+;------------------ ----------------------------------;
+
+;터널 굴착 하중분담률 58%
+
+;----------------------------------------------------;
+
+;굴착
+;del ann 중심점x,중심점y 내경r1, 외경r2 xr xmin,xmax yr ymin,ymax(xr,yr을 벗어나는 범위는 삭제하지 않기 위해 설정)
+;del range atblock 범위내에서만 경계구역 삭제하는 기능, 터널 경계면을 의미하므로 경계 구속조건을 생성하기 위해 내부를 제거해주는 역할
+;del reg x1,y1 x2,y2 x3,y3...
+;del ann 62.9790,48.4800 0,5.8033 xr -3.00,3.00 yr 27.02,33.05
+del range atblock 64.4101 39.1792
+del range atblock 59.9105 38.4429
+del range atblock 67.4707 36.5119
+del range atblock 68.5185 36.2920
+del range atblock 64.8246 37.6521
+del range atblock 62.3964 36.1082
+
+;set xCoord=0.0, yCoord=0.0 ⇒ 굴착면 임의의 좌표
+;![](https://i.imgur.com/T4FzO2B.png)
+
+;![](https://i.imgur.com/GtiN7tE.png)
+
+def setVariable
+    xCoord=62.9200
+    yCoord=36.1300
+    relax=0.54 ; 전단면 54:16:50 = 0.54:0.70:1.0
+    tunnelNumber = 1
+    stageNumber = 1
+end
+
+setVariable
+
+findDomain
+
+getfor
+
+appfor
+
+step 3000
+
+save 01.sav

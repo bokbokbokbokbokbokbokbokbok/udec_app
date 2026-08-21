@@ -1,0 +1,36 @@
+
+re 02.sav
+
+;하드숏크리트물성치
+;소프트숏크리트물성치에서 st_ym만 변경
+prop mat 12 &
+	st_d	0.0024 			&
+	st_p	0.20 			&
+	st_ym	15.0E+03			&
+	if_kn	4.46E+03			&
+	if_ks	2.23E+03			&
+	if_c	1.00 			&
+	if_fr	45 			&
+	if_t	1.00
+
+
+def setVariable
+    xCoord=51.7402
+    yCoord=29.5468
+    relax=1.00 ; 상반 56:18:26 = 0.56:0.74:1.0
+    tunnelNumber = 1
+    stageNumber = 3
+end
+
+setVariable
+
+findDomain
+
+getfor
+
+appfor
+
+step 5000
+
+save 03.sav
+
