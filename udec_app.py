@@ -12,8 +12,8 @@ st.set_page_config(page_title="캐드(DXF) 맞춤형 좌표 추출기", layout="
 
 st.title("📐 캐드(DXF) 맞춤형 좌표 추출 및 UDEC 코드 생성기")
 st.markdown("""
-도면(DXF)을 업로드하고 레이어를 선택하면 좌표가 추출됩니다. 
-추출된 좌표를 바탕으로 **UDEC 명령어**를 즉석에서 생성하고 바로 복사할 수 있습니다.
+도면(DXF)을 업로드하고 레이어를 선택하면 좌표가 추출됩니다.
+터널형상(ARC) 선택 시 **호 길이에 따른 추천 절점 수(0.5m 간격 기준)를 자동 계산**하여 `arc` 명령어를 만듭니다.
 """)
 
 # 파일 업로드
@@ -31,8 +31,8 @@ if uploaded_file is not None:
         
         available_layers = set()
         all_data = []
+        arc_details = {} # ARC 전용 상세 정보 저장 (중심점, 시작점, 각도, 절점수)
         
-        # 1. 데이터 수집 (그려진 순서 기록)
         extract_order = 0
         for entity in msp:
             if entity.dxftype() in ['POINT', 'LINE', 'LWPOLYLINE', 'ARC']:
@@ -51,17 +51,41 @@ if uploaded_file is not None:
                 elif entity.dxftype() == 'ARC':
                     cx, cy = entity.dxf.center.x, entity.dxf.center.y
                     r = entity.dxf.radius
-                    start_angle = math.radians(entity.dxf.start_angle)
-                    end_angle = math.radians(entity.dxf.end_angle)
+                    sa = entity.dxf.start_angle
+                    ea = entity.dxf.end_angle
                     
-                    start_x = cx + r * math.cos(start_angle)
-                    start_y = cy + r * math.sin(start_angle)
-                    end_x = cx + r * math.cos(end_angle)
-                    end_y = cy + r * math.sin(end_angle)
+                    # 각도 차이 계산 (시계 반대 방향)
+                    ang_diff = (ea - sa) % 360
+                    if ang_diff == 0 and sa != ea: ang_diff = 360
                     
+                    start_rad = math.radians(sa)
+                    start_x = cx + r * math.cos(start_rad)
+                    start_y = cy + r * math.sin(start_rad)
+                    
+                    # 💡 호 길이 L = 2 * pi * r * (각도 / 360)
+                    arc_len = 2 * math.pi * r * (ang_diff / 360.0)
+                    
+                    # 💡 0.5m 단위 기본 절점수 계산 및 메뉴얼 기반 최대/최소 제한
+                    calc_n = round(arc_len / 0.5)
+                    if ang_diff >= 120:
+                        n_nodes = min(max(calc_n, 12), 30) # 대형/반원호: 12~30개 제한
+                    else:
+                        n_nodes = min(max(calc_n, 3), 16)  # 소형호: 3~16개 제한
+                    
+                    # 표용 좌표 저장 (중심점, 시작점)
                     all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '원호(ARC) 중심점', 'X좌표': cx, 'Y좌표': cy})
                     all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '원호(ARC) 시작점', 'X좌표': start_x, 'Y좌표': start_y})
-                    all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '원호(ARC) 끝점', 'X좌표': end_x, 'Y좌표': end_y})
+                    
+                    # ARC 전용 입력 파라미터 묶음 저장
+                    if layer_name not in arc_details:
+                        arc_details[layer_name] = []
+                    arc_details[layer_name].append({
+                        'cx': cx, 'cy': cy,
+                        'sx': start_x, 'sy': start_y,
+                        'angle': ang_diff,
+                        'nodes': n_nodes,
+                        'length': arc_len
+                    })
         
         if all_data:
             full_df = pd.DataFrame(all_data)
@@ -84,71 +108,72 @@ if uploaded_file is not None:
                 text_size = st.slider("🔍 미리보기 도면의 번호 크기 조절", min_value=5, max_value=50, value=15, step=1)
                 
                 if selected_layers:
-                    # 데이터 정렬 및 중복 제거
                     filtered_df = full_df[full_df['레이어'].isin(selected_layers)]
                     filtered_df = filtered_df.sort_values(by=['레이어', '추출순서']).drop(columns=['추출순서'])
                     filtered_df = filtered_df.drop_duplicates(subset=['레이어', 'X좌표', 'Y좌표'], keep='first').reset_index(drop=True)
                     
-                    # --- 💡 UDEC 명령어 직접 타이핑 섹션 ---
                     st.subheader("2️⃣ UDEC 명령어 작성")
-                    st.info("💡 **명령어 가이드:** 지층 = `table`, 전체 지반 = `bl`, 원호 = `arc`, 선 = `bl`")
+                    st.info("💡 **가이드:** 일반 지층 = `table1`, 전체 지반 = `bl`. **ARC(원호) 레이어**를 `arc`로 입력하면 중심점/시작점/각도/절점수가 자동으로 만들어집니다.")
                     
                     command_settings = {}
                     
-                    # 레이어별 명령어 입력 UI
                     for layer in selected_layers:
                         c_name, c_cmd, c_opt = st.columns([3, 4, 4])
                         with c_name:
                             st.markdown(f"**{layer}**")
                         with c_cmd:
-                            cmd_str = st.text_input("명령어 (좌표 앞)", value="table", key=f"cmd_{layer}", label_visibility="collapsed", placeholder="예: table1, bl, arc")
+                            # 레이어 이름에 '터널'이나 'arc'가 포함되면 기본값을 'arc'로 자동 세팅
+                            default_cmd = "arc" if ("터널" in layer or "arc" in layer.lower()) else "table"
+                            cmd_str = st.text_input("명령어 (좌표 앞)", value=default_cmd, key=f"cmd_{layer}", label_visibility="collapsed")
                         with c_opt:
-                            extra_opt = st.text_input("추가 속성 (좌표 뒤)", value="", placeholder="예: 17 3 (필요시 입력)", key=f"opt_{layer}", label_visibility="collapsed")
+                            extra_opt = st.text_input("추가 속성 (좌표 뒤)", value="", placeholder="예: 추가옵션", key=f"opt_{layer}", label_visibility="collapsed")
                             
                         command_settings[layer] = {"prefix": cmd_str, "suffix": extra_opt}
                     
-                    # 완성된 코드 텍스트 생성
                     st.write("📝 **완성된 UDEC 코드 (우측 상단 복사 버튼 클릭)**")
                     final_commands = ""
+                    
                     for layer in selected_layers:
-                        layer_df = filtered_df[filtered_df['레이어'] == layer]
-                        
-                        coords = []
-                        for _, row in layer_df.iterrows():
-                            coords.append(f"{row['X좌표']:.4f},{row['Y좌표']:.4f}")
-                        
-                        coord_str = " ".join(coords)
                         prefix = command_settings[layer]["prefix"].strip()
                         suffix = command_settings[layer]["suffix"].strip()
                         
-                        line_str = f"{prefix} {coord_str}"
-                        if suffix:
-                            line_str += f" {suffix}"
-                            
-                        final_commands += line_str + "\n"
+                        # 💡 사용자가 명령어를 'arc'로 적었고 해당 레이어에 원호(ARC) 데이터가 존재하는 경우
+                        if prefix.lower() == "arc" and layer in arc_details:
+                            for arc_info in arc_details[layer]:
+                                line_str = f"arc {arc_info['cx']:.4f},{arc_info['cy']:.4f} {arc_info['sx']:.4f},{arc_info['sy']:.4f} {arc_info['angle']:.1f} {arc_info['nodes']}"
+                                if suffix: line_str += f" {suffix}"
+                                final_commands += line_str + "\n"
+                        else:
+                            # 일반 명령어 (table, bl 등: 좌표 연속 나열)
+                            layer_df = filtered_df[filtered_df['레이어'] == layer]
+                            coords = [f"{row['X좌표']:.4f},{row['Y좌표']:.4f}" for _, row in layer_df.iterrows()]
+                            coord_str = " ".join(coords)
+                            line_str = f"{prefix} {coord_str}"
+                            if suffix: line_str += f" {suffix}"
+                            final_commands += line_str + "\n"
                     
-                    # 복사하기 쉬운 코드 블록으로 출력
                     st.code(final_commands, language="text")
 
-                    # --- 기존 좌표 표 및 다운로드 ---
-                    with st.expander("📊 추출된 세부 좌표(표) 보기 및 엑셀 다운로드"):
-                        st.success(f"선택하신 레이어에서 중복을 제거하여 총 {len(filtered_df)}개의 고유 좌표를 찾았습니다!")
-                        st.dataframe(filtered_df, use_container_width=True)
-                        output = io.BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            filtered_df.to_excel(writer, index=False, sheet_name='선택좌표데이터')
-                        excel_data = output.getvalue()
-                        st.download_button(
-                            label="📥 엑셀로 다운로드 (.xlsx)",
-                            data=excel_data,
-                            file_name="캐드_좌표추출_결과.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                    # 추출된 세부 좌표 목록 표
+                    st.subheader("3️⃣ 추출된 세부 좌표 목록")
+                    st.success(f"총 {len(filtered_df)}개의 고유 좌표가 추출되었습니다. (왼쪽 번호 = 오른쪽 도면 번호)")
+                    st.dataframe(filtered_df, use_container_width=True, height=300)
+                    
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        filtered_df.to_excel(writer, index=False, sheet_name='선택좌표데이터')
+                    excel_data = output.getvalue()
+                    st.download_button(
+                        label="📥 선택한 좌표 데이터 엑셀 다운로드 (.xlsx)",
+                        data=excel_data,
+                        file_name="캐드_선택레이어_좌표.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
                 else:
                     filtered_df = pd.DataFrame() 
-                    st.info("👆 위에서 추출할 레이어를 선택하시면 좌표가 표시됩니다.")
+                    st.info("👆 위에서 추출할 레이어를 선택하시면 코드와 좌표가 표시됩니다.")
 
-            # --- 도면 그리기 (Plotly 사용) ---
+            # --- 도면 미리보기 (Plotly) ---
             with col2:
                 st.subheader("👀 도면 미리보기")
                 
