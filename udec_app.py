@@ -4,6 +4,7 @@ import tempfile
 import io
 import ezdxf
 import matplotlib.pyplot as plt
+import math # ARC 계산을 위해 추가
 
 # 웹 페이지 기본 설정
 st.set_page_config(page_title="캐드(DXF) 맞춤형 좌표 추출기", layout="wide")
@@ -33,19 +34,39 @@ if uploaded_file is not None:
         # 1. 데이터 수집 (그려진 순서 기록)
         extract_order = 0
         for entity in msp:
-            if entity.dxftype() in ['POINT', 'LINE', 'LWPOLYLINE']:
-                extract_order += 1  # 💡 도면에 존재하는 순서를 고유하게 기록합니다.
+            # 💡 ARC 객체를 읽을 수 있도록 추가했습니다.
+            if entity.dxftype() in ['POINT', 'LINE', 'LWPOLYLINE', 'ARC']:
+                extract_order += 1
                 layer_name = entity.dxf.layer
                 available_layers.add(layer_name)
                 
                 if entity.dxftype() == 'POINT':
                     all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '점(POINT)', 'X좌표': entity.dxf.location.x, 'Y좌표': entity.dxf.location.y})
+                
                 elif entity.dxftype() == 'LINE':
                     all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '선(LINE) 시작점', 'X좌표': entity.dxf.start.x, 'Y좌표': entity.dxf.start.y})
                     all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '선(LINE) 끝점', 'X좌표': entity.dxf.end.x, 'Y좌표': entity.dxf.end.y})
+                
                 elif entity.dxftype() == 'LWPOLYLINE':
                     for i, point in enumerate(entity.get_points()):
                         all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': f'폴리선(POLYLINE) 점{i+1}', 'X좌표': point[0], 'Y좌표': point[1]})
+                
+                # 💡 ARC(원호) 객체일 경우: 중심점과 양 끝점을 추출합니다.
+                elif entity.dxftype() == 'ARC':
+                    cx = entity.dxf.center.x
+                    cy = entity.dxf.center.y
+                    r = entity.dxf.radius
+                    start_angle = math.radians(entity.dxf.start_angle)
+                    end_angle = math.radians(entity.dxf.end_angle)
+                    
+                    start_x = cx + r * math.cos(start_angle)
+                    start_y = cy + r * math.sin(start_angle)
+                    end_x = cx + r * math.cos(end_angle)
+                    end_y = cy + r * math.sin(end_angle)
+                    
+                    all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '원호(ARC) 중심점', 'X좌표': cx, 'Y좌표': cy})
+                    all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '원호(ARC) 시작점', 'X좌표': start_x, 'Y좌표': start_y})
+                    all_data.append({'추출순서': extract_order, '레이어': layer_name, '종류': '원호(ARC) 끝점', 'X좌표': end_x, 'Y좌표': end_y})
         
         if all_data:
             full_df = pd.DataFrame(all_data)
@@ -68,7 +89,6 @@ if uploaded_file is not None:
                 
                 st.subheader("2️⃣ 좌표 추출 결과")
                 if selected_layers:
-                    # 💡 가나다순 정렬로 꼬이는 현상을 막고 '추출순서'대로 정렬
                     filtered_df = full_df[full_df['레이어'].isin(selected_layers)]
                     filtered_df = filtered_df.sort_values(by=['레이어', '추출순서']).drop(columns=['추출순서']).reset_index(drop=True)
                     
@@ -98,9 +118,9 @@ if uploaded_file is not None:
                 fig.patch.set_facecolor('#1E1E1E') 
                 ax.set_facecolor('#1E1E1E')
                 
-                # 1. 도면 선 및 점 그리기
+                # 1. 도면 객체 그리기
                 for entity in msp:
-                    if entity.dxftype() not in ['POINT', 'LINE', 'LWPOLYLINE']:
+                    if entity.dxftype() not in ['POINT', 'LINE', 'LWPOLYLINE', 'ARC']:
                         continue
                     
                     layer_name = entity.dxf.layer
@@ -115,6 +135,7 @@ if uploaded_file is not None:
                         x = [entity.dxf.start.x, entity.dxf.end.x]
                         y = [entity.dxf.start.y, entity.dxf.end.y]
                         ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+                        
                     elif entity.dxftype() == 'LWPOLYLINE':
                         points = entity.get_points()
                         x = [p[0] for p in points]
@@ -123,15 +144,31 @@ if uploaded_file is not None:
                             x.append(x[0])
                             y.append(y[0])
                         ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+                        
                     elif entity.dxftype() == 'POINT':
-                        px = entity.dxf.location.x
-                        py = entity.dxf.location.y
-                        ax.scatter(px, py, color=color, s=15, alpha=alpha, zorder=zorder)
+                        ax.scatter(entity.dxf.location.x, entity.dxf.location.y, color=color, s=15, alpha=alpha, zorder=zorder)
+                        
+                    # 💡 미리보기 화면에 원호(ARC)를 부드럽게 그려줍니다.
+                    elif entity.dxftype() == 'ARC':
+                        import numpy as np
+                        cx, cy = entity.dxf.center.x, entity.dxf.center.y
+                        r = entity.dxf.radius
+                        start_ang = math.radians(entity.dxf.start_angle)
+                        end_ang = math.radians(entity.dxf.end_angle)
+                        
+                        # 캐드의 각도는 시계 반대 방향이므로, 끝 각도가 더 작으면 360도를 더해줍니다.
+                        if end_ang < start_ang:
+                            end_ang += 2 * math.pi
+                            
+                        angles = np.linspace(start_ang, end_ang, 50)
+                        x = cx + r * np.cos(angles)
+                        y = cy + r * np.sin(angles)
+                        ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+
                 
                 # 2. 표 인덱스와 100% 동일한 고유 번호 매기기
                 if selected_layers and not filtered_df.empty:
                     for idx, row in filtered_df.iterrows():
-                        # idx는 표의 가장 왼쪽 인덱스(0, 1, 2...)입니다.
                         ax.text(row['X좌표'], row['Y좌표'], str(idx), color='cyan', fontsize=12, fontweight='bold', zorder=15)
                 
                 ax.set_aspect('equal', 'datalim')
@@ -140,7 +177,7 @@ if uploaded_file is not None:
                 st.pyplot(fig)
                 
         else:
-            st.warning("도면에서 점, 선, 폴리선 객체를 하나도 찾을 수 없습니다.")
+            st.warning("도면에서 점, 선, 폴리선, 원호 객체를 하나도 찾을 수 없습니다.")
             
     except Exception as e:
         st.error(f"파일을 읽고 변환하는 중 오류가 발생했습니다: {e}")
