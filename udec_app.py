@@ -10,10 +10,10 @@ import plotly.graph_objects as go
 # 웹 페이지 기본 설정
 st.set_page_config(page_title="캐드(DXF) 맞춤형 좌표 추출기", layout="wide")
 
-st.title("📐 캐드(DXF) 맞춤형 좌표 추출 및 미리보기")
+st.title("📐 캐드(DXF) 맞춤형 좌표 추출 및 UDEC 코드 생성기")
 st.markdown("""
-캐드 도면(DXF)을 업로드하면 도면을 미리보기로 확인하며 레이어를 선택할 수 있습니다.
-미리보기 화면은 **마우스 휠로 확대/축소**, **클릭+드래그로 이동**이 가능합니다. (중복 좌표 자동 제거)
+도면(DXF)을 업로드하고 레이어를 선택하면 좌표가 추출됩니다. 
+추출된 좌표를 바탕으로 **UDEC 명령어**를 즉석에서 생성하고 바로 복사할 수 있습니다.
 """)
 
 # 파일 업로드
@@ -83,28 +83,67 @@ if uploaded_file is not None:
                 
                 text_size = st.slider("🔍 미리보기 도면의 번호 크기 조절", min_value=5, max_value=50, value=15, step=1)
                 
-                st.subheader("2️⃣ 좌표 추출 결과")
                 if selected_layers:
+                    # 데이터 정렬 및 중복 제거
                     filtered_df = full_df[full_df['레이어'].isin(selected_layers)]
                     filtered_df = filtered_df.sort_values(by=['레이어', '추출순서']).drop(columns=['추출순서'])
-                    
-                    # 💡 [핵심 추가 부분] 레이어, X, Y 좌표가 완전히 동일하면 중복을 제거하고 하나만 남깁니다.
                     filtered_df = filtered_df.drop_duplicates(subset=['레이어', 'X좌표', 'Y좌표'], keep='first').reset_index(drop=True)
                     
-                    st.success(f"선택하신 레이어에서 중복을 제거하여 총 {len(filtered_df)}개의 고유 좌표를 찾았습니다!")
-                    st.dataframe(filtered_df, use_container_width=True, height=400)
+                    # --- 💡 UDEC 명령어 직접 타이핑 섹션 ---
+                    st.subheader("2️⃣ UDEC 명령어 작성")
+                    st.info("💡 **명령어 가이드:** 지층 = `table`, 전체 지반 = `bl`, 원호 = `arc`, 선 = `bl`")
                     
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        filtered_df.to_excel(writer, index=False, sheet_name='선택좌표데이터')
-                    excel_data = output.getvalue()
+                    command_settings = {}
                     
-                    st.download_button(
-                        label="📥 선택한 데이터 엑셀로 다운로드 (.xlsx)",
-                        data=excel_data,
-                        file_name="캐드_선택레이어_좌표.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    # 레이어별 명령어 입력 UI
+                    for layer in selected_layers:
+                        c_name, c_cmd, c_opt = st.columns([3, 4, 4])
+                        with c_name:
+                            st.markdown(f"**{layer}**")
+                        with c_cmd:
+                            cmd_str = st.text_input("명령어 (좌표 앞)", value="table", key=f"cmd_{layer}", label_visibility="collapsed", placeholder="예: table1, bl, arc")
+                        with c_opt:
+                            extra_opt = st.text_input("추가 속성 (좌표 뒤)", value="", placeholder="예: 17 3 (필요시 입력)", key=f"opt_{layer}", label_visibility="collapsed")
+                            
+                        command_settings[layer] = {"prefix": cmd_str, "suffix": extra_opt}
+                    
+                    # 완성된 코드 텍스트 생성
+                    st.write("📝 **완성된 UDEC 코드 (우측 상단 복사 버튼 클릭)**")
+                    final_commands = ""
+                    for layer in selected_layers:
+                        layer_df = filtered_df[filtered_df['레이어'] == layer]
+                        
+                        coords = []
+                        for _, row in layer_df.iterrows():
+                            coords.append(f"{row['X좌표']:.4f},{row['Y좌표']:.4f}")
+                        
+                        coord_str = " ".join(coords)
+                        prefix = command_settings[layer]["prefix"].strip()
+                        suffix = command_settings[layer]["suffix"].strip()
+                        
+                        line_str = f"{prefix} {coord_str}"
+                        if suffix:
+                            line_str += f" {suffix}"
+                            
+                        final_commands += line_str + "\n"
+                    
+                    # 복사하기 쉬운 코드 블록으로 출력
+                    st.code(final_commands, language="text")
+
+                    # --- 기존 좌표 표 및 다운로드 ---
+                    with st.expander("📊 추출된 세부 좌표(표) 보기 및 엑셀 다운로드"):
+                        st.success(f"선택하신 레이어에서 중복을 제거하여 총 {len(filtered_df)}개의 고유 좌표를 찾았습니다!")
+                        st.dataframe(filtered_df, use_container_width=True)
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            filtered_df.to_excel(writer, index=False, sheet_name='선택좌표데이터')
+                        excel_data = output.getvalue()
+                        st.download_button(
+                            label="📥 엑셀로 다운로드 (.xlsx)",
+                            data=excel_data,
+                            file_name="캐드_좌표추출_결과.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
                 else:
                     filtered_df = pd.DataFrame() 
                     st.info("👆 위에서 추출할 레이어를 선택하시면 좌표가 표시됩니다.")
@@ -172,7 +211,6 @@ if uploaded_file is not None:
                 if x_pt_sel:
                     fig.add_trace(go.Scatter(x=x_pt_sel, y=y_pt_sel, mode='markers', marker=dict(color='yellow', size=6), hoverinfo='none', showlegend=False))
 
-                # 중복이 제거된 데이터프레임(filtered_df)을 기준으로 텍스트를 그리기 때문에 번호가 하나만 뜹니다.
                 if selected_layers and not filtered_df.empty:
                     fig.add_trace(go.Scatter(
                         x=filtered_df['X좌표'], 
