@@ -5,7 +5,7 @@ import io
 import ezdxf
 import math
 import numpy as np
-import plotly.graph_objects as go # 💡 인터랙티브(움직이는) 그래프를 위한 라이브러리
+import plotly.graph_objects as go
 
 # 웹 페이지 기본 설정
 st.set_page_config(page_title="캐드(DXF) 맞춤형 좌표 추출기", layout="wide")
@@ -81,6 +81,9 @@ if uploaded_file is not None:
                     default=None 
                 )
                 
+                # 💡 사용자가 직접 글자 크기를 키울 수 있는 슬라이더 추가!
+                text_size = st.slider("🔍 미리보기 도면의 번호 크기 조절", min_value=5, max_value=50, value=12, step=1)
+                
                 st.subheader("2️⃣ 좌표 추출 결과")
                 if selected_layers:
                     filtered_df = full_df[full_df['레이어'].isin(selected_layers)]
@@ -106,9 +109,8 @@ if uploaded_file is not None:
 
             # --- 도면 그리기 (Plotly 사용) ---
             with col2:
-                st.subheader("👀 도면 미리보기 (마우스 휠로 확대/축소 가능)")
+                st.subheader("👀 도면 미리보기")
                 
-                # 속도 최적화를 위해 좌표를 리스트 하나로 묶기
                 x_unsel, y_unsel = [], []
                 x_sel, y_sel = [], []
                 x_pt_unsel, y_pt_unsel = [], []
@@ -121,7 +123,6 @@ if uploaded_file is not None:
                     layer_name = entity.dxf.layer
                     is_selected = (selected_layers is not None) and (layer_name in selected_layers)
                     
-                    # 라인 및 폴리선 좌표 추출
                     if entity.dxftype() == 'LINE':
                         x_coords = [entity.dxf.start.x, entity.dxf.end.x]
                         y_coords = [entity.dxf.start.y, entity.dxf.end.y]
@@ -142,7 +143,7 @@ if uploaded_file is not None:
                         x_coords = list(cx + r * np.cos(angles))
                         y_coords = list(cy + r * np.sin(angles))
                     elif entity.dxftype() == 'POINT':
-                        x_coords = None # 점은 따로 처리
+                        x_coords = None 
                         if is_selected:
                             x_pt_sel.append(entity.dxf.location.x)
                             y_pt_sel.append(entity.dxf.location.y)
@@ -150,7 +151,6 @@ if uploaded_file is not None:
                             x_pt_unsel.append(entity.dxf.location.x)
                             y_pt_unsel.append(entity.dxf.location.y)
 
-                    # None을 넣어주면 여러 개의 독립된 선을 한 번에 그릴 수 있어 렌더링이 매우 빠름
                     if x_coords is not None:
                         if is_selected:
                             x_sel.extend(x_coords + [None])
@@ -159,47 +159,40 @@ if uploaded_file is not None:
                             x_unsel.extend(x_coords + [None])
                             y_unsel.extend(y_coords + [None])
 
-                # Plotly 그래프 생성
                 fig = go.Figure()
 
-                # 1. 미선택 선 (배경)
                 if x_unsel:
                     fig.add_trace(go.Scatter(x=x_unsel, y=y_unsel, mode='lines', line=dict(color='white', width=1), opacity=0.2, hoverinfo='none', showlegend=False))
-                # 2. 선택 선 (강조)
                 if x_sel:
                     fig.add_trace(go.Scatter(x=x_sel, y=y_sel, mode='lines', line=dict(color='yellow', width=3), hoverinfo='none', showlegend=False))
-                # 3. 미선택 점
                 if x_pt_unsel:
                     fig.add_trace(go.Scatter(x=x_pt_unsel, y=y_pt_unsel, mode='markers', marker=dict(color='white', size=3), opacity=0.2, hoverinfo='none', showlegend=False))
-                # 4. 선택 점
                 if x_pt_sel:
                     fig.add_trace(go.Scatter(x=x_pt_sel, y=y_pt_sel, mode='markers', marker=dict(color='yellow', size=6), hoverinfo='none', showlegend=False))
 
-                # 5. 표의 인덱스 번호 텍스트 표시
+                # 💡 슬라이더와 연동되어 실시간으로 크기가 변하는 텍스트 번호
                 if selected_layers and not filtered_df.empty:
                     fig.add_trace(go.Scatter(
                         x=filtered_df['X좌표'], 
                         y=filtered_df['Y좌표'], 
                         mode='text',
                         text=filtered_df.index.astype(str),
-                        textfont=dict(color='cyan', size=11, family='Arial Black'), # 텍스트 크기와 폰트
+                        textfont=dict(color='cyan', size=text_size, family='Arial Black'), # 슬라이더 변수(text_size) 적용
                         textposition='top right',
                         hoverinfo='x+y',
                         showlegend=False
                     ))
 
-                # 그래프 레이아웃 설정 (캐드 느낌)
                 fig.update_layout(
                     plot_bgcolor='#1E1E1E',
                     paper_bgcolor='#1E1E1E',
                     margin=dict(l=0, r=0, t=0, b=0),
-                    xaxis=dict(visible=False, scaleanchor="y", scaleratio=1), # 1:1 비율 고정
+                    xaxis=dict(visible=False, scaleanchor="y", scaleratio=1), 
                     yaxis=dict(visible=False),
-                    dragmode='pan', # 기본 조작을 '이동(팬)'으로 설정
+                    dragmode='pan',
                     height=600
                 )
 
-                # 스트림릿에 표시 (스크롤 줌 활성화)
                 st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
                 
         else:
