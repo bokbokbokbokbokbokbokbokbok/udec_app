@@ -6,16 +6,14 @@ import ezdxf
 import math
 import numpy as np
 import plotly.graph_objects as go
-import pdfplumber # PDF 표 파싱 라이브러리
 
 # 웹 페이지 기본 설정
 st.set_page_config(page_title="UDEC 터널 & CAD 자동화 툴", layout="wide")
 
 st.title("⛰️ UDEC 터널 모델링 & CAD 좌표 자동화 툴")
-st.markdown("캐드 파일(DXF)과 물성치 파일(**PDF** / **Excel**)을 업로드하면 **UDEC 해석 코드**를 자동 생성합니다.")
 
-# 메인 탭 구분
-tab_cad, tab_prop = st.tabs(["📐 CAD 좌표 & 터널 형상화", "🧪 물성치(PDF / Excel) UDEC 변환기"])
+# 메인 탭 구별
+tab_cad, tab_prop = st.tabs(["📐 CAD 좌표 & 터널 형상화", "🧪 물성치 라이브 표 입력기"])
 
 # ==========================================
 # 탭 1: CAD 좌표 및 터널 형상화
@@ -162,7 +160,7 @@ with tab_cad:
                             else: x_coords = None
                             if x_coords:
                                 if is_selected: x_sel.extend(x_coords + [None]); y_sel.extend(y_coords + [None])
-                                else: x_unsel.extend(x_coords + [None]); y_unsel.extend(y_coords + [None])
+                                else: x_unsel.extend(x_coords + [None]); y_unsel.extend(y_unsel)
                         if x_unsel: fig2.add_trace(go.Scatter(x=x_unsel, y=y_unsel, mode='lines', line=dict(color='white', width=1), opacity=0.2, showlegend=False))
                         if x_sel: fig2.add_trace(go.Scatter(x=x_sel, y=y_sel, mode='lines', line=dict(color='yellow', width=3), showlegend=False))
                         if selected_layers and not filtered_df.empty:
@@ -173,97 +171,90 @@ with tab_cad:
             st.error(f"DXF 읽기 오류: {e}")
 
 # ==========================================
-# 탭 2: 물성치(PDF / Excel) UDEC 변환기
+# 탭 2: 물성치 라이브 표 입력기 (수정 요청 반영)
 # ==========================================
 with tab_prop:
-    st.subheader("🧪 물성치 표(PDF / Excel) ➡️ UDEC 코드 자동 변환기")
-    st.markdown("지반 물성치 표가 포함된 **PDF 파일** 또는 **엑셀(.xlsx)** 파일을 업로드하세요.")
+    st.subheader("🧪 물성치 라이브 표 입력기")
+    st.markdown("""
+    아래 표에서 각 항목을 직접 클릭하여 타이핑해 주세요.
+    행이 모자라면 표 맨 아래 **`+` (Add row)** 버튼을 클릭하여 계속 추가할 수 있습니다.
+    """)
     
-    prop_file = st.file_uploader("물성치 문서 업로드 (.pdf, .xlsx, .csv)", type=['pdf', 'xlsx', 'xls', 'csv'], key="prop_file_uploader")
+    # 이미지 표 양식을 바탕으로 한 초기 기본 데이터셋
+    default_prop_data = pd.DataFrame([
+        {"지층명": "매립층", "단위중량": 18.0, "점착력": 5.0, "내부마찰각": 27.0, "변형계수": 10.0, "포아송비": 0.35},
+        {"지층명": "퇴적모래", "단위중량": 18.5, "점착력": 0.0, "내부마찰각": 28.0, "변형계수": 20.0, "포아송비": 0.34},
+        {"지층명": "풍화토,N>30", "단위중량": 19.5, "점착력": 24.0, "내부마찰각": 30.0, "변형계수": 50.0, "포아송비": 0.32},
+        {"지층명": "3-2등급", "단위중량": 24.0, "점착력": 800.0, "내부마찰각": 37.0, "변형계수": 4800.0, "포아송비": 0.25},
+        {"지층명": "3-1등급", "단위중량": 24.5, "점착력": 1200.0, "내부마찰각": 39.0, "변형계수": 6300.0, "포아송비": 0.24},
+        {"지층명": "2-2등급", "단위중량": 25.0, "점착력": 1900.0, "내부마찰각": 41.0, "변형계수": 11000.0, "포아송비": 0.23},
+        {"지층명": "2-1등급", "단위중량": 26.0, "점착력": 3100.0, "내부마찰각": 43.0, "변형계수": 14000.0, "포아송비": 0.22},
+        {"지층명": "단층파쇄대", "단위중량": 21.0, "점착력": 50.0, "내부마찰각": 31.0, "변형계수": 350.0, "포아송비": 0.30},
+        {"지층명": "1등급", "단위중량": 27.0, "점착력": 3800.0, "내부마찰각": 45.0, "변형계수": 23000.0, "포아송비": 0.21}
+    ])
     
-    df_raw = None
+    # 라이브 에디터 표
+    edited_df = st.data_editor(
+        default_prop_data,
+        num_rows="dynamic", # 💡 사용자가 자유롭게 행을 추가/삭제할 수 있음
+        use_container_width=True,
+        column_config={
+            "지층명": st.column_config.TextColumn("지층명", help="지층 또는 암반 등급 이름을 적으세요."),
+            "단위중량": st.column_config.NumberColumn("단위중량 (kN/m³)", format="%.1f"),
+            "점착력": st.column_config.NumberColumn("점착력 (kPa)", format="%.1f"),
+            "내부마찰각": st.column_config.NumberColumn("내부마찰각 (°)", format="%.1f"),
+            "변형계수": st.column_config.NumberColumn("변형계수 (MPa)", format="%.1f"),
+            "포아송비": st.column_config.NumberColumn("포아송비", format="%.2f")
+        }
+    )
     
-    if prop_file is not None:
-        file_ext = prop_file.name.split('.')[-1].lower()
-        
-        # 1. PDF 파일 파싱 (pdfplumber 활용)
-        if file_ext == 'pdf':
-            try:
-                with pdfplumber.open(prop_file) as pdf:
-                    all_tables = []
-                    for page in pdf.pages:
-                        tables = page.extract_tables()
-                        for table in tables:
-                            all_tables.extend(table)
-                    
-                    if all_tables:
-                        df_raw = pd.DataFrame(all_tables)
-                        st.success("📄 PDF 문서에서 표(Table) 데이터를 성공적으로 추출했습니다!")
-                    else:
-                        st.warning("PDF 문서 내부에서 표(Table) 형태의 텍스트를 찾을 수 없습니다.")
-            except Exception as e:
-                st.error(f"PDF 파싱 에러: {e}")
-                
-        # 2. 엑셀 / CSV 파일 파싱
-        else:
-            try:
-                if file_ext == 'csv':
-                    df_raw = pd.read_csv(prop_file)
-                else:
-                    xls = pd.ExcelFile(prop_file)
-                    selected_sheet = st.selectbox("물성치 시트 선택", xls.sheet_names)
-                    df_raw = pd.read_excel(prop_file, sheet_name=selected_sheet)
-            except Exception as e:
-                st.error(f"엑셀 파일 읽기 에러: {e}")
-                
-    if df_raw is not None and not df_raw.empty:
+    if edited_df is not None and not edited_df.empty:
         try:
-            st.markdown("### 📄 추출된 원본 표 데이터")
-            st.dataframe(df_raw.head(10), use_container_width=True)
-            
-            st.markdown("### ⚙️ 열 매핑 (필요시 알맞은 열을 선택해 주세요)")
-            cols = list(df_raw.columns)
-            
-            col_a, col_b, col_c, col_d, col_e, col_f, col_g = st.columns(7)
-            with col_a: c_layer = st.selectbox("지층명 열", cols, index=0 if len(cols)>0 else 0)
-            with col_b: c_e = st.selectbox("변형계수(E) 열", cols, index=1 if len(cols)>1 else 0)
-            with col_c: c_v = st.selectbox("포아송비(v) 열", cols, index=2 if len(cols)>2 else 0)
-            with col_d: c_den = st.selectbox("단위중량(den) 열", cols, index=3 if len(cols)>3 else 0)
-            with col_e: c_coh = st.selectbox("점착력(coh) 열", cols, index=4 if len(cols)>4 else 0)
-            with col_f: c_fr = st.selectbox("마찰각(fr) 열", cols, index=5 if len(cols)>5 else 0)
-            with col_g: c_te = st.selectbox("인장강도(te) 열", cols, index=6 if len(cols)>6 else 0)
-            
-            df_calc = pd.DataFrame({
-                '지층명': df_raw[c_layer],
-                'y_mod': pd.to_numeric(df_raw[c_e], errors='coerce'),
-                'p_ratio': pd.to_numeric(df_raw[c_v], errors='coerce'),
-                'den': pd.to_numeric(df_raw[c_den], errors='coerce'),
-                'coh': pd.to_numeric(df_raw[c_coh], errors='coerce'),
-                'fr': pd.to_numeric(df_raw[c_fr], errors='coerce'),
-                'te': pd.to_numeric(df_raw[c_te], errors='coerce')
-            }).dropna(subset=['y_mod', 'p_ratio']).reset_index(drop=True)
-            
+            # 수치 연산을 위해 클리닝
+            df_calc = edited_df.dropna(subset=['변형계수', '포아송비']).copy()
             df_calc['mat'] = range(1, len(df_calc) + 1)
             
-            # Bulk(K), Shear(G) Modulus 자동 계산
-            df_calc['K'] = (df_calc['y_mod'] / (3 * (1 - 2 * df_calc['p_ratio']))).round(0).astype(int)
-            df_calc['G'] = (df_calc['y_mod'] / (2 * (1 + df_calc['p_ratio']))).round(0).astype(int)
+            # UDEC 체계 단위 변환 및 K, G 자동 산정
+            # 1. den: kN/m^3 -> 10^6 kg/m^3 (나누기 10000)
+            df_calc['den_udec'] = (df_calc['단위중량'] / 10000.0).round(5)
             
-            st.success("🎉 Bulk Modulus(K) 및 Shear Modulus(G) 자동 계산 완료!")
-            st.dataframe(df_calc[['mat', '지층명', 'y_mod', 'p_ratio', 'den', 'coh', 'fr', 'te', 'K', 'G']], use_container_width=True)
+            # 2. coh, te: kPa -> MPa (나누기 1000)
+            df_calc['coh_udec'] = (df_calc['점착력'] / 1000.0).round(4)
+            df_calc['te_udec'] = (df_calc['coh_udec'] / 10.0).round(4) # 인장강도는 점착력의 1/10
             
-            st.markdown("### 📝 최종 생성된 UDEC 물성 코드 (우측 상단 복사)")
+            # 3. K, G 산정
+            df_calc['K'] = (df_calc['변형계수'] / (3 * (1 - 2 * df_calc['포아송비']))).round(0).astype(int)
+            df_calc['G'] = (df_calc['변형계수'] / (2 * (1 + df_calc['포아송비']))).round(0).astype(int)
+            
+            st.divider()
+            st.markdown("### 📊 자동 연산 및 계산된 결과 ($K$, $G$ 산정)")
+            
+            disp_df = df_calc[['mat', '지층명', '변형계수', '포아송비', 'den_udec', 'coh_udec', '내부마찰각', 'te_udec', 'K', 'G']].copy()
+            disp_df.columns = ['mat', '지층명', 'E (MPa)', 'v', 'den (UDEC)', 'coh (MPa)', 'fr (°)', 'te (MPa)', 'K (Bulk)', 'G (Shear)']
+            st.dataframe(disp_df, use_container_width=True)
+            
+            # UDEC 물성 생성 코드
+            st.markdown("### 📝 최종 생성된 UDEC 물성 코드 (우측 상단 클릭 후 복사)")
             prop_code = ""
             for _, row in df_calc.iterrows():
                 mat = int(row['mat'])
                 layer = row['지층명']
+                e_val = row['변형계수']
+                v_val = row['포아송비']
+                den = row['den_udec']
+                k_val = row['K']
+                g_val = row['G']
+                coh = row['coh_udec']
+                fr = row['내부마찰각']
+                te = row['te_udec']
+                
                 prop_code += f"; --- {layer} ---\n"
-                prop_code += f"set y_mod={row['y_mod']} p_ratio={row['p_ratio']}\n"
+                prop_code += f"set y_mod={e_val} p_ratio={v_val}\n"
                 prop_code += f"derive\n"
-                prop_code += f"PROP mat={mat} den {row['den']} b={row['K']} g={row['G']} coh {row['coh']} fr {row['fr']} te {row['te']}\n"
+                prop_code += f"PROP mat={mat} den {den} b={k_val} g={g_val} coh {coh} fr {fr} te {te}\n"
                 prop_code += f"change ins table {mat} mat={mat} cons=3\n\n"
             
             st.code(prop_code, language="text")
             
         except Exception as e:
-            st.error(f"물성치 변환 오류: {e}")
+            st.error(f"계산 중 오류가 발생했습니다: {e}")
