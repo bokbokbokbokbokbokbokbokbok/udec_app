@@ -3,24 +3,21 @@ import pandas as pd
 import tempfile
 import io
 import ezdxf
+import matplotlib.pyplot as plt
 
 # 웹 페이지 기본 설정
-st.set_page_config(page_title="캐드(DXF) 좌표 추출기", layout="wide")
+st.set_page_config(page_title="캐드(DXF) 맞춤형 좌표 추출기", layout="wide")
 
-st.title("📐 캐드(DXF) 좌표 엑셀 추출기")
+st.title("📐 캐드(DXF) 맞춤형 좌표 추출 및 미리보기")
 st.markdown("""
-캐드(AutoCAD 등) 도면에서 점(Point), 선(Line), 폴리선(Polyline)의 좌표를 추출하여 엑셀로 변환해주는 툴입니다.
-
-**사용 방법:**
-1. 캐드에서 도면을 열고 `다른 이름으로 저장(Save As)`을 눌러 파일 형식을 **DXF**로 저장합니다.
-2. 저장한 DXF 파일을 아래에 업로드하세요.
+캐드 도면(DXF)을 업로드하면 도면을 미리보기로 확인하며 레이어를 선택할 수 있습니다.
+선택한 레이어는 **노란색**으로 강조되며, 해당 좌표만 엑셀로 추출됩니다.
 """)
 
-# 파일 업로드 칸 생성
+# 파일 업로드
 uploaded_file = st.file_uploader("DXF 파일을 드래그하거나 클릭해서 업로드하세요", type=['dxf'])
 
 if uploaded_file is not None:
-    # 업로드된 파일을 임시 파일로 저장 (ezdxf가 읽을 수 있도록 처리)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".dxf") as tmp:
         tmp.write(uploaded_file.getvalue())
         tmp_path = tmp.name
@@ -28,51 +25,118 @@ if uploaded_file is not None:
     try:
         # DXF 파일 읽기
         doc = ezdxf.readfile(tmp_path)
-        msp = doc.modelspace() # 모델 스페이스 공간 가져오기
+        msp = doc.modelspace()
         
-        data = []
+        available_layers = set()
+        all_data = []
         
-        # 도면 안의 객체들을 돌면서 좌표 추출
+        # 1. 데이터 수집
         for entity in msp:
-            if entity.dxftype() == 'POINT':
-                data.append({'종류': '점(POINT)', 'X좌표': entity.dxf.location.x, 'Y좌표': entity.dxf.location.y})
-            
-            elif entity.dxftype() == 'LINE':
-                data.append({'종류': '선(LINE) 시작점', 'X좌표': entity.dxf.start.x, 'Y좌표': entity.dxf.start.y})
-                data.append({'종류': '선(LINE) 끝점', 'X좌표': entity.dxf.end.x, 'Y좌표': entity.dxf.end.y})
-            
-            elif entity.dxftype() == 'LWPOLYLINE':
-                # 폴리선은 점이 여러개이므로 반복문으로 추출
-                for i, point in enumerate(entity.get_points()):
-                    data.append({'종류': f'폴리선(POLYLINE) 점{i+1}', 'X좌표': point[0], 'Y좌표': point[1]})
+            if entity.dxftype() in ['POINT', 'LINE', 'LWPOLYLINE']:
+                layer_name = entity.dxf.layer
+                available_layers.add(layer_name)
+                
+                if entity.dxftype() == 'POINT':
+                    all_data.append({'레이어': layer_name, '종류': '점(POINT)', 'X좌표': entity.dxf.location.x, 'Y좌표': entity.dxf.location.y})
+                elif entity.dxftype() == 'LINE':
+                    all_data.append({'레이어': layer_name, '종류': '선(LINE) 시작점', 'X좌표': entity.dxf.start.x, 'Y좌표': entity.dxf.start.y})
+                    all_data.append({'레이어': layer_name, '종류': '선(LINE) 끝점', 'X좌표': entity.dxf.end.x, 'Y좌표': entity.dxf.end.y})
+                elif entity.dxftype() == 'LWPOLYLINE':
+                    for i, point in enumerate(entity.get_points()):
+                        all_data.append({'레이어': layer_name, '종류': f'폴리선(POLYLINE) 점{i+1}', 'X좌표': point[0], 'Y좌표': point[1]})
         
-        # 추출된 데이터가 있다면 화면에 보여주고 엑셀로 변환
-        if data:
-            df = pd.DataFrame(data)
+        if all_data:
+            full_df = pd.DataFrame(all_data)
+            full_df['X좌표'] = full_df['X좌표'].round(4)
+            full_df['Y좌표'] = full_df['Y좌표'].round(4)
             
-            # 소수점 4자리까지만 깔끔하게 표시
-            df['X좌표'] = df['X좌표'].round(4)
-            df['Y좌표'] = df['Y좌표'].round(4)
+            st.divider()
+            
+            # 화면을 반으로 나누기 (왼쪽: 선택 및 표 / 오른쪽: 도면 미리보기)
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                st.subheader("1️⃣ 추출할 레이어 선택")
+                layer_list = sorted(list(available_layers))
+                selected_layers = st.multiselect(
+                    "확인하고 싶은 레이어를 선택하세요 (여러 개 선택 가능)", 
+                    options=layer_list,
+                    default=None 
+                )
+                
+                st.subheader("2️⃣ 좌표 추출 결과")
+                if selected_layers:
+                    filtered_df = full_df[full_df['레이어'].isin(selected_layers)]
+                    filtered_df = filtered_df.sort_values(by=['레이어', '종류']).reset_index(drop=True)
+                    
+                    st.success(f"선택하신 레이어에서 총 {len(filtered_df)}개의 좌표를 찾았습니다!")
+                    st.dataframe(filtered_df, use_container_width=True, height=400)
+                    
+                    # 엑셀 다운로드
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        filtered_df.to_excel(writer, index=False, sheet_name='선택좌표데이터')
+                    excel_data = output.getvalue()
+                    
+                    st.download_button(
+                        label="📥 선택한 데이터 엑셀로 다운로드 (.xlsx)",
+                        data=excel_data,
+                        file_name="캐드_선택레이어_좌표.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.info("👆 위에서 추출할 레이어를 선택하시면 좌표가 표시됩니다.")
 
-            st.success(f"🎉 성공! 총 {len(df)}개의 좌표를 추출했습니다.")
-            
-            # 화면에 표 형태로 띄워주기
-            st.dataframe(df, use_container_width=True) 
-            
-            # 엑셀 다운로드 버튼 생성
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='좌표데이터')
-            excel_data = output.getvalue()
-            
-            st.download_button(
-                label="📥 엑셀 파일로 다운로드 (.xlsx)",
-                data=excel_data,
-                file_name="캐드_좌표_추출결과.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            # --- 도면 그리기 (오른쪽 화면) ---
+            with col2:
+                st.subheader("👀 도면 미리보기")
+                
+                # 그래프 설정 (캐드처럼 검은 배경)
+                fig, ax = plt.subplots(figsize=(8, 8))
+                fig.patch.set_facecolor('#1E1E1E') 
+                ax.set_facecolor('#1E1E1E')
+                
+                # 도면 객체를 하나씩 그리며 색상 입히기
+                for entity in msp:
+                    if entity.dxftype() not in ['POINT', 'LINE', 'LWPOLYLINE']:
+                        continue
+                    
+                    layer_name = entity.dxf.layer
+                    # 선택된 레이어인지 확인
+                    is_selected = (selected_layers is not None) and (layer_name in selected_layers)
+                    
+                    # 선택 여부에 따른 색상, 굵기, 투명도 세팅
+                    color = 'yellow' if is_selected else 'white'
+                    linewidth = 2.0 if is_selected else 0.5
+                    alpha = 1.0 if is_selected else 0.2  # 미선택은 옅게
+                    zorder = 10 if is_selected else 1    # 선택된 것을 위로
+                    
+                    if entity.dxftype() == 'LINE':
+                        x = [entity.dxf.start.x, entity.dxf.end.x]
+                        y = [entity.dxf.start.y, entity.dxf.end.y]
+                        ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+                        
+                    elif entity.dxftype() == 'LWPOLYLINE':
+                        points = entity.get_points()
+                        x = [p[0] for p in points]
+                        y = [p[1] for p in points]
+                        if entity.closed: # 폐합된 폴리선이면 끝점을 시작점과 연결
+                            x.append(x[0])
+                            y.append(y[0])
+                        ax.plot(x, y, color=color, linewidth=linewidth, alpha=alpha, zorder=zorder)
+                        
+                    elif entity.dxftype() == 'POINT':
+                        ax.scatter(entity.dxf.location.x, entity.dxf.location.y, color=color, s=15, alpha=alpha, zorder=zorder)
+                
+                # 그래프 비율을 1:1로 맞추고 테두리 숨기기
+                ax.set_aspect('equal', 'datalim')
+                ax.axis('off')
+                
+                # 스트림릿에 그래프 표시
+                st.pyplot(fig)
+                
         else:
-            st.warning("도면에서 점(POINT), 선(LINE), 폴리선(LWPOLYLINE) 객체를 찾을 수 없습니다.")
+            st.warning("도면에서 점, 선, 폴리선 객체를 하나도 찾을 수 없습니다.")
             
     except Exception as e:
         st.error(f"파일을 읽고 변환하는 중 오류가 발생했습니다: {e}")
